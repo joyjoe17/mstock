@@ -1,8 +1,16 @@
 import uuid
+import sys
+from pathlib import Path
 from datetime import datetime
+from typing import List
+
 from fastapi import FastAPI, WebSocket, HTTPException
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
+
+# Allow `python /.../app/main.py` by adding project root to import path.
+if __package__ in (None, ""):
+    sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from app.database import Base, engine, SessionLocal
 from app.models import Signal, Trade
@@ -22,11 +30,27 @@ scheduler.start()
 
 
 @app.get("/scan")
-def get_signals():
+def get_signals() -> List[dict]:
     db = SessionLocal()
-    signals = db.query(Signal).filter(Signal.status == "PENDING_CONFIRMATION").all()
-    db.close()
-    return signals
+    try:
+        signals = db.query(Signal).filter(
+            Signal.status == "PENDING_CONFIRMATION"
+        ).all()
+        return [
+            {
+                "signal_id": s.signal_id,
+                "symbol": s.symbol,
+                "side": s.side,
+                "status": s.status,
+                "strength": s.strength,
+                "generated_at": s.generated_at.isoformat()
+                if s.generated_at
+                else None,
+            }
+            for s in signals
+        ]
+    finally:
+        db.close()
 
 
 @app.post("/trade/confirm/{signal_id}")
